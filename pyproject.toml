@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fusion360-mcp-bridge"
+version = "0.1.0"
+description = "Python bridge and generator examples for Autodesk Fusion's official local MCP server."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = ["mcp>=2,<3"]
+keywords = ["fusion360", "autodesk", "mcp", "cad", "laser", "cnc"]
+
+[project.scripts]
+fusion-bridge = "fusion_bridge:main"
+
+[tool.setuptools]
+py-modules = ["fusion_bridge"]
