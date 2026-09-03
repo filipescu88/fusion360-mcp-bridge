@@ -1,41 +1,38 @@
 # Fusion 360 MCP Bridge
 
-Python bridge for Autodesk Fusion's official local MCP server, with example geometry generators for Fusion API.
+Python bridge for Autodesk Fusion's **official local MCP server**, plus example parametric generators for Fusion API.
 
-> Status: tested locally with Fusion MCP endpoint `http://127.0.0.1:27182/mcp`.
+> Verified with Fusion MCP at `http://127.0.0.1:27182/mcp`.
 
-Projekt powstał jako prosty most:
+Flow:
 
-**generator Python → bridge MCP → oficjalny Fusion MCP → Fusion API → geometria w Fusion**
+**external Python generator → `fusion_bridge.py` → Fusion MCP → Fusion API → geometry in Fusion**
 
-Repo jest nastawione na generatory CAD/CAM, szczególnie pod cięcie laserowe.
+## Features
 
-## Co działa
+- dynamic MCP tool discovery,
+- support for current `fusion_mcp_execute` dispatcher,
+- execution of generated Fusion API scripts with `run(_context)`,
+- offline generator workflow,
+- laser-cut plate generator,
+- box-joint / finger-joint 2D generator,
+- verified box-joint 3D assembly generator,
+- offline tests and GitHub Actions CI.
 
-- połączenie z oficjalnym lokalnym serwerem Fusion MCP,
-- dynamiczne wykrywanie narzędzi,
-- obsługa aktualnego dispatchera `fusion_mcp_execute`,
-- wykonywanie skryptów Fusion API z `run(_context)`,
-- generatory jako niezależne moduły Python,
-- testowa bryła 3D,
-- płaski panel pod laser,
-- box-joint / finger-joint do DXF,
-- eksperymentalne złożenie box-joint 3D.
-
-## Wymagania
+## Requirements
 
 - Autodesk Fusion desktop,
-- włączony **Fusion MCP Server**,
+- `Fusion MCP Server` enabled in Fusion,
 - Python 3.10+,
-- pakiet Python `mcp` v2.
+- Python package `mcp>=2,<3`.
 
-Domyślny endpoint:
+Default endpoint:
 
-`http://127.0.0.1:27182/mcp`
+```text
+http://127.0.0.1:27182/mcp
+```
 
-## Instalacja
-
-### Windows / PowerShell
+## Installation
 
 ```powershell
 git clone https://github.com/filipescu88/fusion360-mcp-bridge.git
@@ -43,128 +40,113 @@ cd fusion360-mcp-bridge
 
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Alternatywnie:
+Or run:
 
 ```powershell
-pip install -e .
+powershell -ExecutionPolicy Bypass -File scripts/setup_windows.ps1
 ```
 
-## Włączenie MCP w Fusion
+## Enable Fusion MCP
 
-W Fusion:
+In Fusion:
 
 `Preferences → General → API → Fusion MCP Server`
 
-Fusion musi być uruchomiony, gdy używasz bridge'a.
-
-## Test połączenia
+Then test the bridge:
 
 ```powershell
 python fusion_bridge.py doctor
 ```
 
-Przykładowy poprawny wynik:
+The current official dispatcher is detected as:
 
 ```text
-OK: połączenie z Fusion MCP działa.
-Endpoint: http://127.0.0.1:27182/mcp
-Wykonawca skryptów: fusion_mcp_execute
-Wywołanie skryptu: featureType="script", object.script
+fusion_mcp_execute
+featureType="script", object.script
 ```
 
-Lista narzędzi:
+List all discovered tools:
 
 ```powershell
 python fusion_bridge.py tools -v
 ```
 
-## Architektura
+## Generator contract
 
-Aktualny Fusion MCP udostępnia dispatcher:
-
-```text
-fusion_mcp_execute
-```
-
-Dla skryptu Python bridge wysyła logicznie:
-
-```text
-featureType = "script"
-object.script = "<wygenerowany kod Fusion API>"
-```
-
-Bridge wykrywa ten wariant automatycznie.
-
-Generator nie musi komunikować się z MCP. Jego jedynym zadaniem jest zwrócić tekst kompletnego skryptu Fusion API.
-
-Kontrakt generatora:
+A generator is a normal external Python module:
 
 ```python
 def generate(params: dict[str, str]) -> str:
     ...
 ```
 
-Wygenerowany skrypt musi zawierać:
+It returns a complete Fusion-side script containing:
 
 ```python
 def run(_context: str):
     ...
 ```
 
-## Generatory
+Run any generator with:
 
-### 1. Testowa bryła
+```powershell
+python fusion_bridge.py run path/to/generator.py
+```
+
+## Included generators
+
+### Test block
 
 ```powershell
 python fusion_bridge.py run generators/generator_test_block.py
 ```
 
-Domyślnie tworzy prostopadłościan 40 × 30 × 10 mm.
+Creates a simple 40 × 30 × 10 mm body by default.
 
-### 2. Panel do lasera
+### Laser plate
 
 ```powershell
 python fusion_bridge.py run generators/generator_laser_plate.py
 ```
 
-Domyślnie:
+Default geometry:
 
-- 120 × 80 mm,
-- 4 otwory Ø5,
-- centralne wycięcie 40 × 12 mm,
-- opcjonalna kompensacja kerfu.
+- 120 × 80 mm plate,
+- 4 × Ø5 mm mounting holes,
+- 40 × 12 mm center cutout,
+- optional geometric kerf compensation.
 
-Przykład:
+Example:
 
 ```powershell
 python fusion_bridge.py run generators/generator_laser_plate.py `
   --param width_mm=200 `
   --param height_mm=120 `
   --param hole_diameter_mm=6 `
-  --param hole_edge_mm=15 `
   --param kerf_mm=0.15
 ```
 
-Po wygenerowaniu:
+Export from Fusion with `Sketch → Export DXF`.
 
-`PPM na szkicu → Export DXF`
-
-### 3. Box-joint / finger-joint — stabilny
+### Box Joint V3 — 2D cut layout
 
 ```powershell
 python fusion_bridge.py run generators/generator_box_joint_3mm_v3.py
 ```
 
-Domyślnie tworzy 6 zamkniętych profili pudełka pod sklejkę 3 mm.
+V3 generates six closed panel profiles and uses actual Fusion `SketchPoint` connections when chaining line segments. This avoids the topological closure problem that can occur when consecutive segments only share identical numeric coordinates.
 
-Wersja V3 używa topologicznego łączenia odcinków przez istniejące `SketchPoint`, co jest istotne dla poprawnego tworzenia zamkniętych profili w Fusion.
+The default 120 × 80 × 60 mm / 3 mm plywood test produced:
 
-Przykład:
+```text
+OK: BOX_JOINT_V3 | panels=6 | lines=440 | profiles=6
+```
+
+Example:
 
 ```powershell
 python fusion_bridge.py run generators/generator_box_joint_3mm_v3.py `
@@ -176,128 +158,73 @@ python fusion_bridge.py run generators/generator_box_joint_3mm_v3.py `
   --param clearance_mm=0.05
 ```
 
-Bez wieka:
+### Box Joint V4 — 2D layout + assembled 3D
 
 ```powershell
-python fusion_bridge.py run generators/generator_box_joint_3mm_v3.py `
-  --param include_lid=0
+python fusion_bridge.py run generators/generator_box_joint_3d_v4.py
 ```
 
-### 4. Box-joint 3D — experimental
+V4 creates:
 
-```powershell
-python fusion_bridge.py run generators/experimental/generator_box_joint_3d_v4.py
+- flat cut layout for DXF,
+- separate Fusion components,
+- one extrusion per panel,
+- assembled 3D box preview.
+
+V4 was verified on a real Fusion MCP session with the default box:
+
+```text
+OK: BOX_JOINT_V4 | outer=120.0x80.0x60.0 mm | material=3.0 mm | components=6 | bodies=6 | layout_lines=368
 ```
 
-Cel tej wersji:
+The `box_width_mm`, `box_depth_mm`, and `box_height_mm` parameters in V4 represent **outer box dimensions**.
 
-- zachować layout 2D do DXF,
-- wyekstrudować panele,
-- utworzyć osobne komponenty,
-- ustawić je jako złożone pudełko.
+## Emit without Fusion
 
-Ta wersja pozostaje w `experimental`, dopóki nie zostanie szerzej przetestowana na realnych dokumentach Fusion.
-
-## Własny generator
-
-Najprostszy szkielet:
-
-```python
-def generate(params: dict[str, str]) -> str:
-    return '''
-import adsk.core
-import adsk.fusion
-
-def run(_context: str):
-    app = adsk.core.Application.get()
-    design = adsk.fusion.Design.cast(app.activeProduct)
-    if not design:
-        raise RuntimeError("Open a Design document first.")
-
-    print("OK")
-'''.lstrip()
-```
-
-Uruchomienie:
-
-```powershell
-python fusion_bridge.py run moj_generator.py
-```
-
-## Emitowanie skryptu bez Fusion
+To inspect the generated Fusion-side Python without executing it:
 
 ```powershell
 python fusion_bridge.py emit generators/generator_laser_plate.py generated.py
 ```
 
-## Testy offline
+## Tests
 
-Bez uruchamiania Fusion:
+Offline tests do not require Fusion:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-Testy sprawdzają:
+The repository includes GitHub Actions checks for Python 3.10–3.13.
 
-- payload dla `fusion_mcp_execute`,
-- składnię generowanych skryptów,
-- podstawowe warianty generatorów.
+## Important Fusion API lesson
 
-## Ważne przy dużych szkicach
-
-Przy setkach odcinków warto korzystać z:
+For large sketches:
 
 ```python
 sketch.isComputeDeferred = True
 ```
 
-na czas tworzenia geometrii i bezwzględnie przywrócić:
+can significantly reduce repeated sketch recomputation. Always restore it to `False` after bulk geometry creation.
 
-```python
-sketch.isComputeDeferred = False
-```
+For closed polygonal profiles, prefer chaining real `SketchPoint` objects such as `previous.endSketchPoint` rather than relying only on separate `Point3D` values with equal coordinates.
 
-Istotne jest też łączenie kolejnych odcinków przez istniejące `SketchPoint`, zamiast polegania wyłącznie na identycznych współrzędnych `Point3D`.
+## Kerf
 
-## Laser / kerf
+Measure kerf on your own machine and material. If your CAM/controller already performs kerf compensation, keep generator-side compensation disabled to avoid applying it twice.
 
-Nie wpisuj losowej wartości kerfu.
+## Official references
 
-Najpierw zmierz:
+- Autodesk Fusion MCP overview: https://help.autodesk.com/view/fusion360/ENU/?guid=FMCP-OVERVIEW
+- Fusion MCP connection: https://help.autodesk.com/view/ADSKMCP/ENU/?guid=ADSKMCP_FusionDesktopMcp_connecting_to_the_fusion_mcp_server_html
+- Fusion API `SketchLines.addByTwoPoints`: https://help.autodesk.com/cloudhelp/ENU/Fusion-360-API/files/SketchLines_addByTwoPoints.htm
+- Fusion API `Sketch.isComputeDeferred`: https://help.autodesk.com/cloudhelp/ENU/Fusion-360-API/files/Sketch_isComputeDeferred.htm
+- MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk
+- Autodesk Fusion MCP sample: https://github.com/AutodeskFusion360/FusionMCPSample
 
-- rzeczywistą grubość materiału,
-- szerokość szczeliny cięcia dla konkretnej mocy i posuwu,
-- potrzebny luz montażowy.
+## Security
 
-Jeżeli CAM lub kontroler już kompensuje kerf, zostaw kompensację generatora wyłączoną.
-
-## Oficjalne źródła
-
-Autodesk Fusion MCP:
-
-- https://help.autodesk.com/view/fusion360/ENU/?guid=FMCP-OVERVIEW
-- https://help.autodesk.com/view/ADSKMCP/ENU/?guid=ADSKMCP_FusionDesktopMcp_connecting_to_the_fusion_mcp_server_html
-
-Fusion API:
-
-- https://help.autodesk.com/cloudhelp/ENU/Fusion-360-API/files/SketchLines_addByTwoPoints.htm
-- https://help.autodesk.com/cloudhelp/ENU/Fusion-360-API/files/Sketch_isComputeDeferred.htm
-- https://help.autodesk.com/cloudhelp/ENU/Fusion-360-API/files/ExtrudeFeatures_addSimple.htm
-
-MCP Python SDK:
-
-- https://github.com/modelcontextprotocol/python-sdk
-
-Referencyjny projekt Autodesk Fusion:
-
-- https://github.com/AutodeskFusion360/FusionMCPSample
-
-## Bezpieczeństwo
-
-Bridge wykonuje kod Python **wewnątrz aktywnej sesji Fusion**.
-
-Uruchamiaj tylko generatory, którym ufasz.
+The bridge executes generated Python **inside the active Fusion session**. Only run generators you trust.
 
 ## License
 
